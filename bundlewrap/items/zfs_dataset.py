@@ -37,6 +37,9 @@ class ZFSDataset(Item):
     # PROPERTIES
 
     def __properties(self, source):
+        if not self.__does_exist():
+            return {}
+        
         cmd = f'zfs get all {self.name} -H -o property,value -s {source}'
         return self.__apply_defaults(dict(
             line.split('\t')
@@ -67,9 +70,11 @@ class ZFSDataset(Item):
     
     # HELPERS
 
-    def __create(self, properties):
+    def __create(self):
         properties_string = ' '.join(
-            f'-o {name}={quote(value)}' for property, value in properties.items()
+            f'-o {property}={quote(value)}'
+                for property, value in self.__affected_properties_after().items()
+                if value is not None
         )
         self.run(f'zfs create {properties_string} {self.name}')
 
@@ -100,7 +105,7 @@ class ZFSDataset(Item):
     # perform
     def fix(self, status):
         if status.must_be_created:
-            self.__create(status.cdict)
+            self.__create()
         else:
             for property in status.keys_to_fix:
                 if property in self.__supported_properties():
