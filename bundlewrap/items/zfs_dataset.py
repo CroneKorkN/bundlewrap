@@ -22,17 +22,11 @@ class ZFSDataset(Item):
 
     # PROPERTY
 
-    def __is_changed(self, property):
-        return self.run(f'zfs get {property} {self.name} -H -o source').stdout.decode('utf-8').strip() == 'local'
-
     def __apply_defaults(self, properties):
         return {
             property: value or self.PROPERTY_DEFAULTS.get(property)
                 for property, value in properties.items()
         }
-
-    def __property(self, property):
-        return self.run(f'zfs get {property} {self.name} -H -o value').stdout.decode('utf-8').strip()
     
     # PROPERTIES
 
@@ -97,7 +91,7 @@ class ZFSDataset(Item):
         if self.__does_exist():
             return {
                 **self.__affected_properties_now(),
-                'mounted': self.__property('mounted'),
+                'mounted': self.run(f'zfs get mounted {self.name} -H -o value').stdout.decode('utf-8').strip(),
             }
         else:
             return None
