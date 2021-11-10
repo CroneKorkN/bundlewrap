@@ -12,90 +12,120 @@ class ZFSDataset(Item):
     BUNDLE_ATTRIBUTE_NAME = "zfs_datasets"
     REJECT_UNKNOWN_ATTRIBUTES = False
     ITEM_TYPE_NAME = "zfs_dataset"
+    PROPERTY_DEFAULTS = {
+        'mountpoint': 'none',
+        'mounted': 'no',
+    }
 
     def __repr__(self):
         return f"<ZFSDataset name:{self.name} {' '.join(f'{k}:{v}' for k,v in self.attributes.items())}>"
 
-    def __all_attrs(self, source='local,default,inherited,temporary,received'):
-        cmd = f'zfs get all {self.name} -p -H -o property,value -s {source}'
-        return dict(
+    # PROPERTY
+
+    def __is_changed(self, property):
+        return self.run(f'zfs get {property} {self.name} -H -o source').stdout.decode('utf-8').strip() == 'local'
+
+    def __apply_defaults(self, properties):
+        return {
+            property: value or self.PROPERTY_DEFAULTS.get(property)
+                for property, value in properties.items()
+        }
+
+    def __property(self, property):
+        return self.run(f'zfs get {property} {self.name} -H -o value').stdout.decode('utf-8').strip()
+    
+    # PROPERTIES
+
+    def __properties(self, source):
+        cmd = f'zfs get all {self.name} -H -o property,value -s {source}'
+        return self.__apply_defaults(dict(
             line.split('\t')
                 for line in self.run(cmd).stdout.decode('utf-8').strip().splitlines()
+        ))
+    def __supported_properties(self):
+        return self.__properties(source='local,default,inherited,temporary,received')
+    def __changed_properties(self):
+        return self.__properties(source='local')
+
+    def __affected_property_names(self):
+        return {
+            *self.__changed_properties().keys(),
+            *self.attributes.keys(),
+        }
+
+    def __affected_properties_now(self):
+        return {
+            name: self.__changed_properties().get(name, None)
+                for name in self.__affected_property_names()
+        }
+
+    def __affected_properties_after(self):
+        return {
+            name: self.attributes.get(name, None)
+                for name in self.__affected_property_names()
+        }
+    
+    # HELPERS
+
+    def __create(self, properties):
+        properties_string = ' '.join(
+            f'-o {name}={quote(value)}' for property, value in properties.items()
         )
-
-    def __create(self, options):
-        option_list = []
-        for option, value in sorted(options.items()):
-            # We must exclude the 'mounted' property here because it's a
-            # read-only "informational" property.
-            if option != 'mounted' and value is not None:
-                option_list.append("-o {}={}".format(quote(option), quote(value)))
-        option_args = " ".join(option_list)
-
-        self.run(
-            "zfs create {} {}".format(
-                option_args,
-                quote(self.name),
-            ),
-            may_fail=True,
-        )
-
-        if options['mounted'] == 'no':
-            self.__set_option('mounted', 'no')
+        self.run(f'zfs create {properties_string} {self.name}')
 
     def __does_exist(self):
-        status_result = self.run(
-            "zfs list {}".format(quote(self.name)),
+        return self.run(
+            f'zfs list {self.name}',
             may_fail=True,
-        )
-        return status_result.return_code == 0
+        ).return_code == 0
 
-    def __get_option(self, option):
-        cmd = "zfs get -Hp -o value {} {}".format(quote(option), quote(self.name))
-        # We always expect this to succeed since we don't call this function
-        # if we have already established that the dataset does not exist.
-        status_result = self.run(cmd)
-        return status_result.stdout.decode('utf-8').strip()
-
-    def __set_option(self, option, value):
-        if option == 'mounted':
-            # 'mounted' is a read-only property that can not be altered by
-            # 'set'. We need to call 'zfs mount tank/foo'.
-            self.run(
-                "zfs {} {}".format(
-                    "mount" if value == 'yes' else "unmount",
-                    quote(self.name),
-                ),
-                may_fail=True,
-            )
+    def __set_property(self, option, value):
+        if value == None:
+            self.run(f'zfs inherit -S {quote(option)} {quote(self.name)}')
         else:
-            self.run(
-                "zfs set {}={} {}".format(
-                    quote(option),
-                    quote(value),
-                    quote(self.name),
-                ),
-                may_fail=True,
-            )
+            self.run(f'zfs set {quote(option)}={quote(value)} {quote(self.name)}')
+    
+    # CORE
 
-    def cdict(self):
-        print(self.__all_attrs())
-        print(self.__all_attrs(source='local'))
-        cdict = {}
-        for option, value in self.attributes.items():
-            if option == 'mountpoint' and value is None:
-                value = "none"
-            if value is not None:
-                cdict[option] = value
-        cdict['mounted'] = 'no' if cdict.get('mountpoint') in (None, "none") else 'yes'
-        return cdict
+    # before
+    def sdict(self):
+        if self.__does_exist():
+            return {
+                **self.__affected_properties_now(),
+                'mounted': self.__property('mounted'),
+            }
+        else:
+            return None
 
+    # perform
     def fix(self, status):
         if status.must_be_created:
             self.__create(status.cdict)
         else:
-            for option in status.keys_to_fix:
-                self.__set_option(self.name, option, status.cdict[option])
+            for property in status.keys_to_fix:
+                if property in self.__supported_properties():
+                    self.__set_property(property, status.cdict[property])
+
+    # after
+    def cdict(self):
+        return {
+            **self.__affected_properties_after(),
+            'mounted': 'no' if self.__affected_properties_after().get('mountpoint') == None else 'yes',
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     def get_auto_attrs(self, items):
         pool = self.name.split("/")[0]
@@ -136,13 +166,3 @@ class ZFSDataset(Item):
             ))
 
         return {'needs': needs}
-
-    def sdict(self):
-        if not self.__does_exist():
-            return None
-
-        sdict = {}
-        for option in self.attributes:
-            sdict[option] = self.__get_option(option)
-        sdict['mounted'] = self.__get_option('mounted')
-        return sdict
