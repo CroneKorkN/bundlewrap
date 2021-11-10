@@ -20,29 +20,18 @@ class ZFSDataset(Item):
     def __repr__(self):
         return f"<ZFSDataset name:{self.name} {' '.join(f'{k}:{v}' for k,v in self.attributes.items())}>"
 
-    # PROPERTY
 
-    def __apply_defaults(self, properties):
-        return {
-            property: value or self.PROPERTY_DEFAULTS.get(property)
-                for property, value in properties.items()
-        }
-    
     # PROPERTIES
 
-    def __properties(self, source):
+    def __changed_properties(self):
         if not self.__does_exist():
             return {}
         
-        cmd = f'zfs get all {self.name} -H -o property,value -s {source}'
-        return self.__apply_defaults(dict(
+        cmd = f'zfs get all {self.name} -p -H -o property,value -s local'
+        return dict(
             line.split('\t')
                 for line in self.run(cmd).stdout.decode('utf-8').strip().splitlines()
-        ))
-    def __supported_properties(self):
-        return self.__properties(source='local,default,inherited,temporary,received')
-    def __changed_properties(self):
-        return self.__properties(source='local')
+        )
 
     def __affected_property_names(self):
         return {
@@ -52,13 +41,13 @@ class ZFSDataset(Item):
 
     def __affected_properties_now(self):
         return {
-            name: self.__changed_properties().get(name, None)
+            name: self.__changed_properties().get(name) or self.PROPERTY_DEFAULTS.get(name)
                 for name in self.__affected_property_names()
         }
 
     def __affected_properties_after(self):
         return {
-            name: self.attributes.get(name, None)
+            name: self.attributes.get(name) or self.PROPERTY_DEFAULTS.get(name)
                 for name in self.__affected_property_names()
         }
     
@@ -91,7 +80,7 @@ class ZFSDataset(Item):
         if self.__does_exist():
             return {
                 **self.__affected_properties_now(),
-                'mounted': self.run(f'zfs get mounted {self.name} -H -o value').stdout.decode('utf-8').strip(),
+                'mounted': self.run(f'zfs get mounted {self.name} -p -H -o value').stdout.decode('utf-8').strip(),
             }
         else:
             return None
@@ -107,7 +96,7 @@ class ZFSDataset(Item):
                         self.run(f'zfs mount {quote(self.name)}')
                     else:
                         self.run(f'zfs umount {quote(self.name)}')
-                elif property in self.__supported_properties():
+                elif property in self.__affected_properties_after():
                     self.__set_property(property, status.cdict[property])
 
     # after
