@@ -16,7 +16,14 @@ class ZFSDataset(Item):
     def __repr__(self):
         return f"<ZFSDataset name:{self.name} {' '.join(f'{k}:{v}' for k,v in self.attributes.items())}>"
 
-    def __create(self, path, options):
+    def __all_attrs(self, source='local,default,inherited,temporary,received'):
+        cmd = f'zfs get all {self.name} -p -H -o property,value -s {source}'
+        return dict(
+            line.split('\t')
+                for line in self.run(cmd).stdout.decode('utf-8').strip().splitlines()
+        )
+
+    def __create(self, options):
         option_list = []
         for option, value in sorted(options.items()):
             # We must exclude the 'mounted' property here because it's a
@@ -28,36 +35,36 @@ class ZFSDataset(Item):
         self.run(
             "zfs create {} {}".format(
                 option_args,
-                quote(path),
+                quote(self.name),
             ),
             may_fail=True,
         )
 
         if options['mounted'] == 'no':
-            self.__set_option(path, 'mounted', 'no')
+            self.__set_option('mounted', 'no')
 
-    def __does_exist(self, path):
+    def __does_exist(self):
         status_result = self.run(
-            "zfs list {}".format(quote(path)),
+            "zfs list {}".format(quote(self.name)),
             may_fail=True,
         )
         return status_result.return_code == 0
 
-    def __get_option(self, path, option):
-        cmd = "zfs get -Hp -o value {} {}".format(quote(option), quote(path))
+    def __get_option(self, option):
+        cmd = "zfs get -Hp -o value {} {}".format(quote(option), quote(self.name))
         # We always expect this to succeed since we don't call this function
         # if we have already established that the dataset does not exist.
         status_result = self.run(cmd)
         return status_result.stdout.decode('utf-8').strip()
 
-    def __set_option(self, path, option, value):
+    def __set_option(self, option, value):
         if option == 'mounted':
             # 'mounted' is a read-only property that can not be altered by
             # 'set'. We need to call 'zfs mount tank/foo'.
             self.run(
                 "zfs {} {}".format(
                     "mount" if value == 'yes' else "unmount",
-                    quote(path),
+                    quote(self.name),
                 ),
                 may_fail=True,
             )
@@ -66,12 +73,14 @@ class ZFSDataset(Item):
                 "zfs set {}={} {}".format(
                     quote(option),
                     quote(value),
-                    quote(path),
+                    quote(self.name),
                 ),
                 may_fail=True,
             )
 
     def cdict(self):
+        print(self.__all_attrs())
+        print(self.__all_attrs(source='local'))
         cdict = {}
         for option, value in self.attributes.items():
             if option == 'mountpoint' and value is None:
@@ -83,7 +92,7 @@ class ZFSDataset(Item):
 
     def fix(self, status):
         if status.must_be_created:
-            self.__create(self.name, status.cdict)
+            self.__create(status.cdict)
         else:
             for option in status.keys_to_fix:
                 self.__set_option(self.name, option, status.cdict[option])
@@ -129,11 +138,11 @@ class ZFSDataset(Item):
         return {'needs': needs}
 
     def sdict(self):
-        if not self.__does_exist(self.name):
+        if not self.__does_exist():
             return None
 
         sdict = {}
         for option in self.attributes:
-            sdict[option] = self.__get_option(self.name, option)
-        sdict['mounted'] = self.__get_option(self.name, 'mounted')
+            sdict[option] = self.__get_option(option)
+        sdict['mounted'] = self.__get_option('mounted')
         return sdict
