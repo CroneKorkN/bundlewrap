@@ -20,7 +20,6 @@ class ZFSDataset(Item):
     def __repr__(self):
         return f"<ZFSDataset name:{self.name} {' '.join(f'{k}:{v}' for k,v in self.attributes.items())}>"
 
-
     # PROPERTIES
 
     def __changed_properties(self):
@@ -62,10 +61,7 @@ class ZFSDataset(Item):
         self.run(f'zfs create {properties_string} {self.name}')
 
     def __does_exist(self):
-        return self.run(
-            f'zfs list {self.name}',
-            may_fail=True,
-        ).return_code == 0
+        return self.run(f'zfs list {self.name}', may_fail=True).return_code == 0
 
     def __set_property(self, option, value):
         if value == None:
@@ -106,23 +102,12 @@ class ZFSDataset(Item):
             'mounted': 'no' if self.__affected_properties_after().get('mountpoint') == None else 'yes',
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+    # DEPENDENCIES
 
     def get_auto_attrs(self, items):
         pool = self.name.split("/")[0]
         pool_item = "zfs_pool:{}".format(pool)
+        parent_dataset = '/'.join(self.name.split('/')[0:-1])
         pool_item_found = False
         needs = set()
 
@@ -133,18 +118,16 @@ class ZFSDataset(Item):
                 needs.add(pool_item)
             elif (
                 item.ITEM_TYPE_NAME == "zfs_dataset" and
-                self.name != item.name
+                item.name == '/'.join(self.name.split('/')[0:-1])
             ):
-                # Find all other datasets that are parents of this
-                # dataset.
-                # XXX Could be optimized by finding the "largest"
-                # parent only.
-                if self.name.startswith(item.name + "/"):
-                    needs.add(item.id)
-                elif (
-                    self.attributes.get('mountpoint') and
-                    item.attributes.get('mountpoint') and
-                    self.attributes['mountpoint'].startswith(item.attributes['mountpoint'])
+                needs.add(item.id)
+            elif self.attributes.get('mountpoint'):
+                parent_directory = '/'.join(self.attributes.get('mountpoint', '').split('/')[0:-1])
+                if (
+                    item.ITEM_TYPE_NAME == "zfs_dataset" and
+                    item.attributes.get('mountpoint') == parent_directory or
+                    item.ITEM_TYPE_NAME == "directory" and
+                    item.name == parent_directory
                 ):
                     needs.add(item.id)
 
@@ -157,5 +140,5 @@ class ZFSDataset(Item):
                 pool=pool,
                 dep=pool_item,
             ))
-
+            
         return {'needs': needs}
