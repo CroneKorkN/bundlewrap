@@ -108,7 +108,12 @@ class ZFSDataset(Item):
             self.__create()
         else:
             for property in status.keys_to_fix:
-                if property in self.__supported_properties():
+                if property == 'mounted':
+                    if status.cdict[property] == 'yes':
+                        self.run(f'zfs mount {quote(self.name)}')
+                    else:
+                        self.run(f'zfs umount {quote(self.name)}')
+                elif property in self.__supported_properties():
                     self.__set_property(property, status.cdict[property])
 
     # after
