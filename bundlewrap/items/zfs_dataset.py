@@ -23,31 +23,31 @@ class ZFSDataset(Item):
     # PROPERTIES
 
     def __changed_properties(self):
-        if not self.__does_exist():
+        if self.__does_exist():
+            cmd = f'zfs get all {self.name} -p -H -o property,value -s local'
+            return dict(
+                line.split('\t')
+                    for line in self.run(cmd).stdout.decode('utf-8').strip().splitlines()
+            )
+        else:
             return {}
-        
-        cmd = f'zfs get all {self.name} -p -H -o property,value -s local'
-        return dict(
-            line.split('\t')
-                for line in self.run(cmd).stdout.decode('utf-8').strip().splitlines()
-        )
-
-    def __affected_property_names(self):
-        return {
-            *self.__changed_properties().keys(),
-            *self.attributes.keys(),
-        }
-
+    
     def __affected_properties_now(self):
         return {
-            name: self.__changed_properties().get(name) or self.PROPERTY_DEFAULTS.get(name)
-                for name in self.__affected_property_names()
+            **{
+                name: self.PROPERTY_DEFAULTS.get(name)
+                    for name in self.attributes
+            },
+            **self.__changed_properties(),
         }
 
     def __affected_properties_after(self):
         return {
-            name: self.attributes.get(name) or self.PROPERTY_DEFAULTS.get(name)
-                for name in self.__affected_property_names()
+            **{
+                name: self.PROPERTY_DEFAULTS.get(name)
+                    for name in self.__changed_properties()
+            },
+            **self.attributes,
         }
     
     # HELPERS
@@ -92,7 +92,7 @@ class ZFSDataset(Item):
                         self.run(f'zfs mount {quote(self.name)}')
                     else:
                         self.run(f'zfs umount {quote(self.name)}')
-                elif property in self.__affected_properties_after():
+                else:
                     self.__set_property(property, status.cdict[property])
 
     # after
