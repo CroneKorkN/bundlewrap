@@ -32,7 +32,10 @@ class ZFSDataset(Item):
         else:
             return {}
     
-    def __affected_properties_now(self):
+    def __properties_now(self):
+        # affected properties in their current state:
+        # - changed properties have their value set
+        # - the remaining item properties have their default set
         return {
             **{
                 name: self.PROPERTY_DEFAULTS.get(name)
@@ -41,7 +44,10 @@ class ZFSDataset(Item):
             **self.__changed_properties(),
         }
 
-    def __affected_properties_after(self):
+    def __properties_after(self):
+        # affected properties in their final state:
+        # - item properties have their value set
+        # - the remaining changed properties have their default set
         return {
             **{
                 name: self.PROPERTY_DEFAULTS.get(name)
@@ -55,7 +61,7 @@ class ZFSDataset(Item):
     def __create(self):
         properties_string = ' '.join(
             f'-o {property}={quote(value)}'
-                for property, value in self.__affected_properties_after().items()
+                for property, value in self.__properties_after().items()
                 if value is not None
         )
         self.run(f'zfs create {properties_string} {self.name}')
@@ -75,7 +81,7 @@ class ZFSDataset(Item):
     def sdict(self):
         if self.__does_exist():
             return {
-                **self.__affected_properties_now(),
+                **self.__properties_now(),
                 'mounted': self.run(f'zfs get mounted {self.name} -p -H -o value').stdout.decode('utf-8').strip(),
             }
         else:
@@ -98,8 +104,8 @@ class ZFSDataset(Item):
     # after
     def cdict(self):
         return {
-            **self.__affected_properties_after(),
-            'mounted': 'no' if self.__affected_properties_after().get('mountpoint') == None else 'yes',
+            **self.__properties_after(),
+            'mounted': 'no' if self.__properties_after().get('mountpoint') == None else 'yes',
         }
 
     # DEPENDENCIES
