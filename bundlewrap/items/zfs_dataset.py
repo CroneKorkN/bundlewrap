@@ -105,15 +105,13 @@ class ZFSDataset(Item):
     def cdict(self):
         return {
             **self.__properties_after(),
-            'mounted': 'no' if self.__properties_after().get('mountpoint') == None else 'yes',
+            'mounted': 'yes' if self.__properties_after().get('mountpoint') else 'no',
         }
 
     # DEPENDENCIES
 
     def get_auto_attrs(self, items):
         pool = self.name.split("/")[0]
-        pool_item = "zfs_pool:{}".format(pool)
-        parent_dataset = '/'.join(self.name.split('/')[0:-1])
         pool_item_found = False
         needs = set()
 
@@ -121,7 +119,7 @@ class ZFSDataset(Item):
             if item.ITEM_TYPE_NAME == "zfs_pool" and item.name == pool:
                 # Add dependency to the pool this dataset resides on.
                 pool_item_found = True
-                needs.add(pool_item)
+                needs.add(f'zfs_pool:{pool}')
             elif (
                 item.ITEM_TYPE_NAME == "zfs_dataset" and
                 item.name == '/'.join(self.name.split('/')[0:-1])
@@ -139,12 +137,8 @@ class ZFSDataset(Item):
 
         if not pool_item_found:
             raise BundleError(_(
-                "ZFS dataset {dataset} resides on pool {pool} but item "
-                "{dep} does not exist"
-            ).format(
-                dataset=self.name,
-                pool=pool,
-                dep=pool_item,
+                f'ZFS dataset {self.name} resides on pool {pool} but item '
+                'zfs_pool:{dep} does not exist'
             ))
             
         return {'needs': needs}
