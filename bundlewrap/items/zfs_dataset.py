@@ -18,9 +18,17 @@ class ZFSDataset(Item):
     }
 
     def __repr__(self):
-        return f"<ZFSDataset name:{self.name} {' '.join(f'{k}:{v}' for k,v in self.attributes.items())}>"
+        return f"<ZFSDataset name:{self.name} {' '.join(f'{k}:{v}' for k,v in self.__item_properties().items())}>"
 
     # PROPERTIES
+    
+    def __item_properties(self):
+        # remove properties with value of None
+        return {
+            property: value
+                for property, value in self.attributes.items()
+                if value
+        }
 
     def __changed_properties(self):
         if self.__does_exist():
@@ -39,7 +47,7 @@ class ZFSDataset(Item):
         return {
             **{
                 name: self.PROPERTY_DEFAULTS.get(name)
-                    for name in self.attributes
+                    for name in self.__item_properties()
             },
             **self.__changed_properties(),
         }
@@ -53,7 +61,7 @@ class ZFSDataset(Item):
                 name: self.PROPERTY_DEFAULTS.get(name)
                     for name in self.__changed_properties()
             },
-            **self.attributes,
+            **self.__item_properties(),
         }
     
     # HELPERS
@@ -61,8 +69,7 @@ class ZFSDataset(Item):
     def __create(self):
         properties_string = ' '.join(
             f'-o {property}={quote(value)}'
-                for property, value in self.__properties_after().items()
-                if value is not None
+                for property, value in self.__item_properties().items()
         )
         self.run(f'zfs create {properties_string} {self.name}')
 
@@ -124,8 +131,8 @@ class ZFSDataset(Item):
             ):
                 # add dependency to parent dataset
                 needs.add(item.id)
-            elif self.attributes.get('mountpoint'):
-                parent_directory = '/'.join(self.attributes.get('mountpoint', '').split('/')[0:-1])
+            elif self.__item_properties().get('mountpoint'):
+                parent_directory = '/'.join(self.__item_properties().get('mountpoint', '').split('/')[0:-1])
                 if (
                     item.ITEM_TYPE_NAME == "zfs_dataset" and
                     item.attributes.get('mountpoint') == parent_directory or
