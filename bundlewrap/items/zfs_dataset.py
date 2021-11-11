@@ -27,7 +27,7 @@ class ZFSDataset(Item):
         return {
             property: value
                 for property, value in self.attributes.items()
-                if value
+                if value and value != self.PROPERTY_DEFAULTS.get(property)
         }
 
     def __changed_properties(self):
@@ -109,7 +109,7 @@ class ZFSDataset(Item):
     def cdict(self):
         return {
             **self.__properties_after(),
-            'mounted': 'yes' if self.__properties_after().get('mountpoint') else 'no',
+            'mounted': 'no' if self.__properties_after().get('mountpoint') == 'none' else 'yes',
         }
 
     # DEPENDENCIES
