@@ -61,7 +61,7 @@ class ZFSDataset(Item):
             }
         else:
             return {}
-
+ 
     def __create(self):
         properties_string = ' '.join(
             f'-o {property}={quote(value)}'
