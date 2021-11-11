@@ -16,7 +16,6 @@ class ZFSDataset(Item):
     # for defaults which should be different from 'zfs inherit -S' behaviour
     PROPERTY_DEFAULTS = {
         'mountpoint': 'none',
-        'mounted': 'no',
     }
 
     def __repr__(self):
@@ -37,16 +36,13 @@ class ZFSDataset(Item):
     def __item_properties(self):
         # remove properties with default value or none
         return {
-            property: value
-                for property, value in self.attributes.items()
-                if value not in [None, self.PROPERTY_DEFAULTS.get(property)]
+            **self.PROPERTY_DEFAULTS,
+            **{
+                property: value
+                    for property, value in self.attributes.items()
+                    if value not in [None, self.PROPERTY_DEFAULTS.get(property)]
+            },
         }
-
-    @cached_property
-    def __readonly_property_names(self):
-        parent = '/'.join(self.name.split('/')[0:-1])
-        cmd = f'zfs get all {parent} -p -H -o property -s none'
-        return self.run(cmd).stdout.decode('utf-8').strip().splitlines()
 
     @cached_property
     def __changed_property_names(self):
@@ -56,32 +52,10 @@ class ZFSDataset(Item):
         else:
             return []
 
-    @cached_property
-    def __relevant_property_names(self):
-        return {
-            *self.__item_properties,
-            *self.__changed_property_names,
-            *self.PROPERTY_DEFAULTS,
-        }
-
-    def __changed_properties(self):
-        # properties currently set on the dataset
-        if self.__does_exist():
-            return {
-                property: self.__get_property(property)
-                    for property in self.__changed_property_names
-            }
-        else:
-            return {}
-
     def __create(self):
         properties_string = ' '.join(
             f'-o {property}={quote(value)}'
-                for property, value in {
-                    **self.PROPERTY_DEFAULTS,
-                    **self.__item_properties,
-                }.items()
-                    if property not in self.__readonly_property_names
+                for property, value in self.__item_properties.items()
         )
         self.run(f'zfs create {properties_string} {self.name}')
 
@@ -99,8 +73,14 @@ class ZFSDataset(Item):
     def sdict(self):
         if self.__does_exist():
             r = {
-                property: self.__get_property(property)
-                    for property in self.__relevant_property_names
+                **{
+                    property: self.__get_property(property)
+                        for property in {
+                            *self.__item_properties,
+                            *self.__changed_property_names,
+                        }
+                },
+                'mounted': self.run(f'zfs get mounted {self.name} -p -H -o value').stdout.decode('utf-8').strip()
             }
             print(self.name, 'now', dict(sorted(r.items())))
             return r
@@ -112,10 +92,10 @@ class ZFSDataset(Item):
             self.__create()
         else:
             for property in status.keys_to_fix:
-                if property not in self.__readonly_property_names:
+                if property != 'mounted':
                     self.__set_property(property, status.cdict[property])
             # mount after setting mountpoint property
-            if status.cdict['mounted'] != self.__get_property('mounted'):
+            if status.cdict['mounted'] != self.run(f'zfs get mounted {self.name} -p -H -o value').stdout.decode('utf-8').strip():
                 mount = 'mount' if status.cdict['mounted'] == 'yes' else 'unmount'
                 self.run(f'zfs {mount} {quote(self.name)}')
 
@@ -124,12 +104,12 @@ class ZFSDataset(Item):
             # changed properties with their default values
             **{
                 property: self.PROPERTY_DEFAULTS.get(property)
-                    for property in self.__relevant_property_names
+                    for property in self.__changed_property_names
             },
             # item properties with their state values
             **self.__item_properties,
             # mounted is derived from mountpoint
-            'mounted': 'no' if self.__item_properties.get('mountpoint') == None else 'yes',
+            'mounted': 'no' if self.__item_properties.get('mountpoint') == 'none' else 'yes',
         }
         print(self.name, 'final', dict(sorted(r.items())))
         return r
