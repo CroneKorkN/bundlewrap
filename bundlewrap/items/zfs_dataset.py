@@ -3,6 +3,7 @@ from pipes import quote
 from bundlewrap.exceptions import BundleError
 from bundlewrap.items import Item
 from bundlewrap.utils.text import mark_for_translation as _
+from bundlewrap.utils import cached_property
 
 
 class ZFSDataset(Item):
@@ -23,7 +24,7 @@ class ZFSDataset(Item):
     # HELPERS
     
     def __get_property(self, property):
-        return self.run(f'zfs get {property} {self.name} -H -o value').stdout.decode('utf-8').strip()
+        return self.run(f'zfs get {property} {self.name} -p -H -o value').stdout.decode('utf-8').strip()
     
     def __item_properties(self):
         # remove properties with default value or none
@@ -33,14 +34,18 @@ class ZFSDataset(Item):
                 if value not in [None, self.PROPERTY_DEFAULTS.get(property)]
         }
 
+    @cached_property
+    def __changed_property_names(self):
+        cmd = f'zfs get all {self.name} -p -H -o property -s local'
+        return self.run(cmd).stdout.decode('utf-8').strip().splitlines()
+
     def __changed_properties(self):
         # properties currently set on the dataset
         if self.__does_exist():
-            cmd = f'zfs get all {self.name} -p -H -o property,value -s local'
-            return  dict(
-                line.split('\t')
-                    for line in self.run(cmd).stdout.decode('utf-8').strip().splitlines()
-            )
+            return {
+                property: self.__get_property(property)
+                    for property in self.__changed_property_names
+            }
         else:
             return {}
 
