@@ -33,37 +33,15 @@ class ZFSDataset(Item):
     def __changed_properties(self):
         if self.__does_exist():
             cmd = f'zfs get all {self.name} -p -H -o property,value -s local'
-            return dict(
-                line.split('\t')
-                    for line in self.run(cmd).stdout.decode('utf-8').strip().splitlines()
-            )
+            return {
+                **dict(
+                    line.split('\t')
+                        for line in self.run(cmd).stdout.decode('utf-8').strip().splitlines()
+                ),
+            }
         else:
             return {}
-    
-    def __properties_now(self):
-        # affected properties in their current state:
-        # - changed properties have their value set
-        # - the remaining item properties have their default set
-        return {
-            **{
-                name: self.PROPERTY_DEFAULTS.get(name)
-                    for name in self.__item_properties()
-            },
-            **self.__changed_properties(),
-        }
 
-    def __properties_after(self):
-        # affected properties in their final state:
-        # - item properties have their value set
-        # - the remaining changed properties have their default set
-        return {
-            **{
-                name: self.PROPERTY_DEFAULTS.get(name)
-                    for name in self.__changed_properties()
-            },
-            **self.__item_properties(),
-        }
-    
     # HELPERS
 
     def __create(self):
@@ -86,9 +64,16 @@ class ZFSDataset(Item):
 
     def sdict(self):
         if self.__does_exist():
+            # affected properties in their current state:
+            # - changed properties have their value set
+            # - the remaining item properties have their default set
             return {
-                **self.__properties_now(),
-                'mounted': self.run(f'zfs get mounted {self.name} -p -H -o value').stdout.decode('utf-8').strip(),
+                **{
+                    name: self.PROPERTY_DEFAULTS.get(name)
+                        for name in self.__item_properties()
+                },
+                **self.__changed_properties(),
+                'mounted': 'no' if self.__changed_properties().get('mountpoint') == 'none' else 'yes',
             }
         else:
             return None
@@ -107,9 +92,16 @@ class ZFSDataset(Item):
                     self.__set_property(property, status.cdict[property])
 
     def cdict(self):
+        # affected properties in their final state:
+        # - item properties have their value set
+        # - the remaining changed properties have their default set
         return {
-            **self.__properties_after(),
-            'mounted': 'no' if self.__properties_after().get('mountpoint') == 'none' else 'yes',
+            **{
+                name: self.PROPERTY_DEFAULTS.get(name)
+                    for name in self.__changed_properties()
+            },
+            **self.__item_properties(),
+            'mounted': 'no' if self.__item_properties().get('mountpoint') == None else 'yes',
         }
 
     # DEPENDENCIES
