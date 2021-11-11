@@ -33,12 +33,10 @@ class ZFSDataset(Item):
     def __changed_properties(self):
         if self.__does_exist():
             cmd = f'zfs get all {self.name} -p -H -o property,value -s local'
-            return {
-                **dict(
-                    line.split('\t')
-                        for line in self.run(cmd).stdout.decode('utf-8').strip().splitlines()
-                ),
-            }
+            return  dict(
+                line.split('\t')
+                    for line in self.run(cmd).stdout.decode('utf-8').strip().splitlines()
+            )
         else:
             return {}
 
@@ -64,16 +62,16 @@ class ZFSDataset(Item):
 
     def sdict(self):
         if self.__does_exist():
-            # affected properties in their current state:
-            # - changed properties have their value set
-            # - the remaining item properties have their default set
             return {
+                # changed properties have their value set
                 **{
                     name: self.PROPERTY_DEFAULTS.get(name)
                         for name in self.__item_properties()
                 },
+                # the remaining item properties have their default set
                 **self.__changed_properties(),
-                'mounted': 'no' if self.__changed_properties().get('mountpoint') == 'none' else 'yes',
+                # mounted is derived from mountpoint
+                'mounted': self.run(f'zfs get mounted {self.name} -H -o value').stdout.decode('utf-8').strip(),
             }
         else:
             return None
@@ -92,15 +90,15 @@ class ZFSDataset(Item):
                     self.__set_property(property, status.cdict[property])
 
     def cdict(self):
-        # affected properties in their final state:
-        # - item properties have their value set
-        # - the remaining changed properties have their default set
         return {
+            # item properties have their value set
             **{
                 name: self.PROPERTY_DEFAULTS.get(name)
                     for name in self.__changed_properties()
             },
+            # the remaining changed properties have their default set
             **self.__item_properties(),
+            # mounted is derived from mountpoint
             'mounted': 'no' if self.__item_properties().get('mountpoint') == None else 'yes',
         }
 
