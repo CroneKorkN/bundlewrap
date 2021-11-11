@@ -113,6 +113,7 @@ class ZFSDataset(Item):
     def get_auto_attrs(self, items):
         pool = self.name.split("/")[0]
         pool_item_found = False
+        parent_dataset = '/'.join(self.name.split('/')[0:-1])
         needs = set()
 
         for item in items:
@@ -122,7 +123,7 @@ class ZFSDataset(Item):
                 needs.add(f'zfs_pool:{pool}')
             elif (
                 item.ITEM_TYPE_NAME == "zfs_dataset" and
-                item.name == '/'.join(self.name.split('/')[0:-1])
+                item.name == parent_dataset
             ):
                 needs.add(item.id)
             elif self.attributes.get('mountpoint'):
