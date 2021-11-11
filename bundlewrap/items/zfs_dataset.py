@@ -75,9 +75,8 @@ class ZFSDataset(Item):
         else:
             self.run(f'zfs set {quote(option)}={quote(value)} {quote(self.name)}')
     
-    # CORE
+    # ITEM
 
-    # before
     def sdict(self):
         if self.__does_exist():
             return {
@@ -87,7 +86,6 @@ class ZFSDataset(Item):
         else:
             return None
 
-    # perform
     def fix(self, status):
         if status.must_be_created:
             self.__create()
@@ -101,7 +99,6 @@ class ZFSDataset(Item):
                 else:
                     self.__set_property(property, status.cdict[property])
 
-    # after
     def cdict(self):
         return {
             **self.__properties_after(),
@@ -118,13 +115,14 @@ class ZFSDataset(Item):
 
         for item in items:
             if item.ITEM_TYPE_NAME == "zfs_pool" and item.name == pool:
-                # Add dependency to the pool this dataset resides on.
+                # add dependency to the pool this dataset resides on
                 pool_item_found = True
                 needs.add(f'zfs_pool:{pool}')
             elif (
                 item.ITEM_TYPE_NAME == "zfs_dataset" and
                 item.name == parent_dataset
             ):
+                # add dependency to parent dataset
                 needs.add(item.id)
             elif self.attributes.get('mountpoint'):
                 parent_directory = '/'.join(self.attributes.get('mountpoint', '').split('/')[0:-1])
@@ -134,6 +132,7 @@ class ZFSDataset(Item):
                     item.ITEM_TYPE_NAME == "directory" and
                     item.name == parent_directory
                 ):
+                    # add dependency to parent mountpoint or directory
                     needs.add(item.id)
 
         if not pool_item_found:
