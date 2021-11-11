@@ -20,7 +20,7 @@ class ZFSDataset(Item):
     }
 
     def __repr__(self):
-        return f"<ZFSDataset name:{self.name} {' '.join(f'{k}:{v}' for k,v in self.__item_properties().items())}>"
+        return f"<ZFSDataset name:{self.name} {' '.join(f'{k}:{v}' for k,v in self.__item_properties.items())}>"
 
     # HELPERS
     
@@ -33,6 +33,7 @@ class ZFSDataset(Item):
         else:
             return None
     
+    @cached_property
     def __item_properties(self):
         # remove properties with default value or none
         return {
@@ -42,15 +43,26 @@ class ZFSDataset(Item):
         }
 
     @cached_property
-    def __writable_property_names(self):
+    def __readonly_property_names(self):
         parent = '/'.join(self.name.split('/')[0:-1])
-        cmd = f'zfs get all {parent} -p -H -o property -s local,inherited,default,temporary'
+        cmd = f'zfs get all {parent} -p -H -o property -s none'
         return self.run(cmd).stdout.decode('utf-8').strip().splitlines()
 
     @cached_property
     def __changed_property_names(self):
-        cmd = f'zfs get all {self.name} -p -H -o property -s local'
-        return self.run(cmd).stdout.decode('utf-8').strip().splitlines()
+        if self.__does_exist():
+            cmd = f'zfs get all {self.name} -p -H -o property -s local'
+            return self.run(cmd).stdout.decode('utf-8').strip().splitlines()
+        else:
+            return []
+
+    @cached_property
+    def __relevant_property_names(self):
+        return {
+            *self.__item_properties,
+            *self.__changed_property_names,
+            *self.PROPERTY_DEFAULTS,
+        }
 
     def __changed_properties(self):
         # properties currently set on the dataset
@@ -61,15 +73,15 @@ class ZFSDataset(Item):
             }
         else:
             return {}
- 
+
     def __create(self):
         properties_string = ' '.join(
             f'-o {property}={quote(value)}'
                 for property, value in {
                     **self.PROPERTY_DEFAULTS,
-                    **self.__item_properties(),
+                    **self.__item_properties,
                 }.items()
-                    if property in self.__writable_property_names
+                    if property not in self.__readonly_property_names
         )
         self.run(f'zfs create {properties_string} {self.name}')
 
@@ -87,20 +99,8 @@ class ZFSDataset(Item):
     def sdict(self):
         if self.__does_exist():
             r = {
-                # item properties with their defaults
-                **{
-                    name: self.PROPERTY_DEFAULTS.get(name)
-                        for name in self.__item_properties()
-                },
-                # properties with diverging defaults need to be explicitly included
-                **{
-                    property: self.__get_property(property)
-                        for property in self.PROPERTY_DEFAULTS
-                },
-                # changed properties with their current value
-                **self.__changed_properties(),
-                # mounted with its current value
-                'mounted': self.__get_property('mounted'),
+                property: self.__get_property(property)
+                    for property in self.__relevant_property_names
             }
             print(self.name, 'now', dict(sorted(r.items())))
             return r
@@ -112,7 +112,7 @@ class ZFSDataset(Item):
             self.__create()
         else:
             for property in status.keys_to_fix:
-                if property in self.__writable_property_names:
+                if property not in self.__readonly_property_names:
                     self.__set_property(property, status.cdict[property])
             # mount after setting mountpoint property
             if status.cdict['mounted'] != self.__get_property('mounted'):
@@ -123,15 +123,13 @@ class ZFSDataset(Item):
         r = {
             # changed properties with their default values
             **{
-                name: self.PROPERTY_DEFAULTS.get(name)
-                    for name in self.__changed_properties()
+                property: self.PROPERTY_DEFAULTS.get(property)
+                    for property in self.__relevant_property_names
             },
-            # include default properties
-            **self.PROPERTY_DEFAULTS,
             # item properties with their state values
-            **self.__item_properties(),
+            **self.__item_properties,
             # mounted is derived from mountpoint
-            'mounted': 'no' if self.__item_properties().get('mountpoint') == None else 'yes',
+            'mounted': 'no' if self.__item_properties.get('mountpoint') == None else 'yes',
         }
         print(self.name, 'final', dict(sorted(r.items())))
         return r
@@ -155,8 +153,8 @@ class ZFSDataset(Item):
             ):
                 # add dependency to parent dataset
                 needs.add(item.id)
-            elif self.__item_properties().get('mountpoint'):
-                parent_directory = '/'.join(self.__item_properties().get('mountpoint', '').split('/')[0:-1])
+            elif self.__item_properties.get('mountpoint'):
+                parent_directory = '/'.join(self.__item_properties.get('mountpoint', '').split('/')[0:-1])
                 if (
                     item.ITEM_TYPE_NAME == "zfs_dataset" and
                     item.attributes.get('mountpoint') == parent_directory or
