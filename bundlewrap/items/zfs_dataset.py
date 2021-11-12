@@ -28,10 +28,10 @@ class ZFSDataset(Item):
     
     def __get_property(self, property):
         if (
-            # only properties explicitly changed on this dataset
-            self.__zfs(f'get {property} {self.name} -p -H -o source') == 'local' or
             # always consider properties with a custom default value as changed
-            property in self.PROPERTY_DEFAULTS
+            property in self.PROPERTY_DEFAULTS or
+            # properties with a value source other than 'local' are unchanged
+            self.__zfs(f'get {property} {self.name} -p -H -o source') == 'local'
         ):
             return self.__zfs(f'get {property} {self.name} -p -H -o value')
         else:
