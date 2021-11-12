@@ -28,7 +28,9 @@ class ZFSDataset(Item):
     
     def __get_property(self, property):
         if (
+            # only properties explicitly changed on this dataset
             self.__zfs(f'get {property} {self.name} -p -H -o source') == 'local' or
+            # always consider properties with a custom default value as changed
             property in self.PROPERTY_DEFAULTS
         ):
             return self.__zfs(f'get {property} {self.name} -p -H -o value')
@@ -37,6 +39,7 @@ class ZFSDataset(Item):
     
     @cached_property
     def __item_properties(self):
+        # all properties wanted by this item
         return {
             **self.PROPERTY_DEFAULTS,
             **{
@@ -48,6 +51,7 @@ class ZFSDataset(Item):
 
     @cached_property
     def __changed_property_names(self):
+        # names of previously changed properties
         if self.__does_exist():
             return self.__zfs(f'get all {self.name} -p -H -o property -s local').splitlines()
         else:
@@ -74,6 +78,7 @@ class ZFSDataset(Item):
     def sdict(self):
         if self.__does_exist():
             return {
+                # all relevant properties with their current values
                 **{
                     property: self.__get_property(property)
                         for property in {
@@ -81,6 +86,7 @@ class ZFSDataset(Item):
                             *self.__changed_property_names,
                         }
                 },
+                # special readonly property 'mounted'
                 'mounted': self.__zfs(f'get mounted {self.name} -p -H -o value')
             }
         else:
@@ -100,11 +106,14 @@ class ZFSDataset(Item):
 
     def cdict(self):
         return {
+            # previously changed properties with their default values
             **{
                 property: self.PROPERTY_DEFAULTS.get(property)
                     for property in self.__changed_property_names
             },
+            # item properties with their wanted values
             **self.__item_properties,
+            # special readonly property 'mounted'
             'mounted': 'no' if self.__item_properties.get('mountpoint') == 'none' else 'yes',
         }
 
