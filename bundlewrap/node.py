@@ -896,6 +896,7 @@ class Node:
             self.hostname,
             local_path,
             remote_path,
+            temp_dir=self.temp_dir,
             add_host_keys=self._add_host_keys,
             group=group,
             mode=mode,
