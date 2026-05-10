@@ -120,14 +120,21 @@ drill-in is the next step if the first check shows a difference.
 
 | Changed | First check | Drill-in |
 |---|---|---|
-| `bundles/<x>/items.py` | `bw hash <node-with-bundle-x>` | `bw items <node> <id> -p` |
-| `bundles/<x>/metadata.py` | `bw hash bundle:<x>` (hashes every node with bundle `<x>`; reactors can ripple into other bundles' namespaces) | `bw metadata <node>`, `bw metadata <node> -k <key>` |
-| `bundles/<x>/files/<template>` | `bw hash <node>` | `bw items <node> <path> -p` |
-| `groups/*.py` | `bw hash` every affected node (use `group:<name>` selector to scope) | `bw groups -n <node>` |
+| `bundles/<x>/items.py` | `bw hash` (whole repo) + diff; or `bw hash <node>` for a node returned by `bw nodes bundle:<x>` | `bw items <node> <id>` (default expected state) |
+| `bundles/<x>/metadata.py` | `bw hash` (whole repo) + diff — reactors can ripple into other bundles' namespaces, so re-check every node carrying `<x>` (`bw nodes bundle:<x>`) | `bw metadata <node>`, `bw metadata <node> -k <key>` |
+| `bundles/<x>/files/<template>` | `bw hash <node>` | `bw items <node> <path> --preview` |
+| `groups/*.py` | `bw hash <groupname>` (bare group name; `bw hash` does not accept selectors) | `bw nodes <node> -a groups` |
 | `libs/*.py` | `bw hash` all nodes — biggest blast radius | `bw debug` |
 | `nodes/<x>.py` | `bw hash <node>` | `bw metadata <node>` |
 | `hooks/*.py` | re-run the bw command whose lifecycle the hook hooks | — |
 | Anything | `bw test` — cheapest repo-level sanity | — |
+
+**`bw hash` accepts only literal node or group names** — selectors like
+`bundle:<x>` and `group:<name>` work for `bw apply`, `bw run`, `bw nodes`,
+etc., but NOT for `bw hash` (verified against `bundlewrap/cmdline/hash.py`,
+which calls `repo.get_node()` then `repo.get_group()` on the literal arg).
+Likewise, `bw groups` has no `-n` flag — for "which groups does node X
+belong to," use `bw nodes <node> -a groups`.
 
 After the table: a hash diff workflow snippet — `bw hash > before.txt`,
 make the change, `bw hash > after.txt`, `diff before.txt after.txt`. This

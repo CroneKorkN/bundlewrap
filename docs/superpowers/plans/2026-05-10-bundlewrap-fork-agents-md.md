@@ -102,7 +102,7 @@ git commit -m "AGENTS.md: skeleton with section headers and lead paragraph"
 ## Task 2: Mental model section
 
 **Files:**
-- Modify: `AGENTS.md` (replace `<!-- Task 3 -->` placeholder under `## Mental model`)
+- Modify: `AGENTS.md` (replace `<!-- Task 2 -->` placeholder under `## Mental model`)
 
 - [ ] **Step 1: Replace the placeholder under `## Mental model` with this exact content**
 
@@ -192,7 +192,7 @@ No working-tree changes, no network. Safe to invoke autonomously.
 
 - `bw hash` — fingerprints the merged state of nodes/items/metadata. The primary "did my change have the expected effect" signal.
 - `bw metadata <node>` — prints a node's resolved metadata. `-k <key>` prints one path.
-- `bw items <node>` — lists items for a node. `bw items <node> <id> -p` prints one item's attributes.
+- `bw items <node>` — lists items for a node. `bw items <node> <id>` prints one item's expected state; add `--attrs` for internal attributes, or `--preview` (`-f`) for the rendered content of a file item.
 - `bw nodes` — lists nodes (with selectors).
 - `bw groups` — lists groups.
 - `bw debug` — interactive REPL with `repo` pre-bound; non-interactive form `bw debug -c '<expr>'`. Common probes: `repo.get_node('<name>').metadata.get('<key>', None)` (resolved metadata for one node), `repo.libs.<name>` (inspect a shared helper), `repo.path` (absolute repo path).
@@ -249,14 +249,14 @@ Table keyed by what the agent edited, plus a hash-diff workflow snippet.
 - [ ] **Step 1: Replace the placeholder with this exact content**
 
 ````markdown
-After making any change to a bundlewrap config repo, run the first check from the row that matches what you edited. If the first check shows a diff or change, drill in with the second column. The bundle (`bundle:<name>`) and group (`group:<name>`) selectors target every node carrying a bundle or group respectively.
+After making any change to a bundlewrap config repo, run the first check from the row that matches what you edited. If the first check shows a diff or change, drill in with the second column. **`bw hash` accepts only literal node or group names** — selectors like `bundle:<x>` and `group:<name>` work for `bw apply`, `bw run`, `bw nodes`, etc., but NOT for `bw hash`. To scope to a bundle, enumerate nodes first (`bw nodes bundle:<x>`) and hash each.
 
 | You changed | First check | Drill-in |
 |---|---|---|
-| `bundles/<x>/items.py` | `bw hash bundle:<x>` | `bw items <node> <id> -p` |
-| `bundles/<x>/metadata.py` | `bw hash bundle:<x>` (reactors can ripple into other bundles' namespaces — re-check every node carrying `<x>`) | `bw metadata <node>`, `bw metadata <node> -k <key>` |
-| `bundles/<x>/files/<file>` (template or static) | `bw hash bundle:<x>` | `bw items <node> <path> -p` |
-| `groups/*.py` (or `groups.py`) | `bw hash group:<name>` for affected groups | `bw groups -n <node>`, `bw metadata <node>` |
+| `bundles/<x>/items.py` | `bw hash` (whole repo) and diff; or `bw hash <node>` for a node returned by `bw nodes bundle:<x>` | `bw items <node> <id>` (expected state) |
+| `bundles/<x>/metadata.py` | `bw hash` (whole repo) and diff — reactors can ripple into other bundles' namespaces, so re-check every node carrying `<x>` (`bw nodes bundle:<x>`) | `bw metadata <node>`, `bw metadata <node> -k <key>` |
+| `bundles/<x>/files/<file>` (template or static) | `bw hash <node>` for an affected node | `bw items <node> <path> --preview` (rendered content) |
+| `groups/*.py` (or `groups.py`) | `bw hash <groupname>` (bare group name) | `bw nodes <node> -a groups`, `bw metadata <node>` |
 | `libs/*.py` | `bw hash` (no target — all nodes; biggest blast radius) | `bw debug` to inspect helper outputs |
 | `nodes/<x>.py` (or `nodes.py`) | `bw hash <node>` | `bw metadata <node>` |
 | `hooks/*.py` | re-run the `bw` command whose lifecycle the hook hooks | — |
@@ -477,7 +477,7 @@ git commit -m "AGENTS.md: add 'where to look for depth' link list"
 ## Task 9: Fill in the Table of Contents
 
 **Files:**
-- Modify: `AGENTS.md` (replace `<!-- TOC filled in Task 10 -->` under `## Contents`)
+- Modify: `AGENTS.md` (replace `<!-- TOC filled in Task 9 -->` under `## Contents`)
 
 Now that all sections are written, generate the TOC with anchors. GitHub renders a heading like `## After-change runbook` as anchor `#after-change-runbook` (lowercased, spaces → hyphens, punctuation stripped).
 
